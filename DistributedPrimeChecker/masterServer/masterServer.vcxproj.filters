@@ -18,5 +18,8 @@
     <ClCompile Include="masterServer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="backup.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

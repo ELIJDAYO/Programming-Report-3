@@ -20,9 +20,9 @@ int main() {
 
         // Receive response from masterServer
         char response[1024];
-        size_t length = socket.read_some(buffer(response));
-        string numPrimes(response, length);
-        cout << "Number of primes received from masterServer: " << numPrimes << endl;
+        //size_t length = socket.read_some(buffer(response));
+        //string numPrimes(response, length);
+        //cout << "Number of primes received from masterServer: " << numPrimes << endl;
 
         // Close the socket
         socket.close();
