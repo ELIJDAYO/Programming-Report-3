@@ -3,5 +3,5 @@
   - add -D_WIN32_WINNT=0x0601 to the compiler command line; or
   - add _WIN32_WINNT=0x0601 to your project's Preprocessor Definitions.
   Assuming _WIN32_WINNT=0x0601 (i.e. Windows 7 target).
-C:\Users\edayo\Downloads\4y2t\STDISCM\Programming Report #3\DistributedPrimeChecker\DistributedPrimeChecker\clientProcess.cpp(22,14): warning C4101: 'response': unreferenced local variable
+C:\Users\edayo\Downloads\4y2t\STDISCM\Programming Report #3\DistributedPrimeChecker\DistributedPrimeChecker\clientProcess.cpp(23,14): warning C4101: 'response': unreferenced local variable
   DistributedPrimeChecker.vcxproj -> C:\Users\edayo\Downloads\4y2t\STDISCM\Programming Report #3\DistributedPrimeChecker\x64\Debug\clientProcess.exe
