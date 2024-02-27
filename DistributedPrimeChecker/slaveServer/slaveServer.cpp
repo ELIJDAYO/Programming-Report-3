@@ -22,7 +22,7 @@ std::vector<int> findPrimesInRange(int start, int end) {
     std::vector<int> primes;
     for (int i = start; i <= end; ++i) {
         if (isPrime(i)) { 
-            cout << i << endl;
+            //cout << i << endl;
             primes.push_back(i);
         };
 

@@ -69,6 +69,9 @@ void handleClient(ip::tcp::socket&& socket, const std::vector<ip::tcp::endpoint>
 
         // Connect to slave servers and send ranges
         vector<int> primeList;
+        // Record the start time
+        auto start_time = std::chrono::steady_clock::now();
+
         // Connect to slave servers and send ranges
         for (size_t i = 0; i < slaveEndpoints.size(); ++i) {
             ip::tcp::socket slaveSocket(socket.get_executor());
@@ -109,10 +112,16 @@ void handleClient(ip::tcp::socket&& socket, const std::vector<ip::tcp::endpoint>
         vector<int> remainingPrimesCount = findPrimesInRange(remainingStart, remainingEnd);
         primeList.insert(primeList.end(), remainingPrimesCount.begin(), remainingPrimesCount.end());
 
+        // Record the end time
+        auto end_time = std::chrono::steady_clock::now();
+        // Calculate the duration
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        std::cout << "Execution time: " << duration.count() << " milliseconds" << std::endl;
+
         // Print total number of primes
         int totalPrimes = 0;
         for (int prime : primeList) {
-            cout << prime << endl;
+            //cout << prime << endl;
             totalPrimes++;
         }
         cout << "Total number of primes: " << totalPrimes << endl;

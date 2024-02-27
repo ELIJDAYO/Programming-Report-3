@@ -14,7 +14,7 @@ int main() {
         socket.connect(tcp::endpoint(ip::address::from_string("192.168.68.107"), 27015));
 
         // Send range to master server
-        string range = "1 1000"; // Define the range here
+        string range = "1 100"; // Define the range here
         range.push_back('\0'); // Add a null character at the end of the string
         boost::system::error_code error;
         boost::asio::write(socket, buffer(range));
