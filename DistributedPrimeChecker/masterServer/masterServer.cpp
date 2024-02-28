@@ -2,9 +2,11 @@
 #include <vector>
 #include <boost/asio.hpp>
 #include <thread>
+#include <future>
 
 using namespace std;
 using namespace boost::asio;
+boost::asio::io_context ioContext;
 namespace ip = boost::asio::ip;
 
 vector<int> findPrimesInRange(int start, int end) {
@@ -27,21 +29,25 @@ vector<int> findPrimesInRange(int start, int end) {
 // Function to handle client requests
 void handleClient(ip::tcp::socket&& socket, const std::vector<ip::tcp::endpoint>& slaveEndpoints) {
     try {
-        // Receive range from client
+        // Record the start time
+        auto timeStart = std::chrono::steady_clock::now();
+
+        // Receive range and thread count from client
         char data[1024];
         size_t bytes_received = socket.read_some(buffer(data));
-        string range(data, bytes_received);
-        range.erase(std::remove(range.begin(), range.end(), '\n'), range.end()); // Remove newline character
-        range.erase(std::remove(range.begin(), range.end(), '\r'), range.end()); // Remove carriage return character
-        cout << "Received range from client: " << range << endl;
+        string rangeAndThreadCount(data, bytes_received);
+        rangeAndThreadCount.erase(std::remove(rangeAndThreadCount.begin(), rangeAndThreadCount.end(), '\n'), rangeAndThreadCount.end()); // Remove newline character
+        rangeAndThreadCount.erase(std::remove(rangeAndThreadCount.begin(), rangeAndThreadCount.end(), '\r'), rangeAndThreadCount.end()); // Remove carriage return character
+        cout << "Received range and thread count from client: " << rangeAndThreadCount << endl;
 
-        // Parse range
-        istringstream iss(range);
-        int start, end;
-        iss >> start >> end;
+        // Parse range and thread count
+        istringstream iss(rangeAndThreadCount);
+        int start, end, numThreads;
+        iss >> start >> end >> numThreads;
 
         // Print original range
         cout << "[Original Range]: " << start << "-" << end << endl;
+        cout << "Number of threads: " << numThreads << endl;
 
         // Print number of ranges
         int numRanges = slaveEndpoints.size() + 1; // Including master range
@@ -68,74 +74,88 @@ void handleClient(ip::tcp::socket&& socket, const std::vector<ip::tcp::endpoint>
         }
 
         // Connect to slave servers and send ranges
-        vector<int> primeList;
-        // Record the start time
-        auto start_time = std::chrono::steady_clock::now();
-
-        // Connect to slave servers and send ranges
+        vector<future<vector<int>>> futures;
         for (size_t i = 0; i < slaveEndpoints.size(); ++i) {
-            ip::tcp::socket slaveSocket(socket.get_executor());
             ip::tcp::endpoint slaveEndpoint = slaveEndpoints[i];
-            // Check if the slave server is reachable
-            boost::system::error_code ec;
-            slaveSocket.connect(slaveEndpoint, ec);
-
-            if (!ec) {
-                // Slave server is active, proceed with sending range
-                string rangeToSend = to_string(slaveRanges[i].first) + " " + to_string(slaveRanges[i].second); // Adjusted the end range
-                slaveSocket.write_some(buffer(rangeToSend));
-                // Keep the connection open until the slave server acknowledges receipt
-                char response[1024];
-                size_t bytes_received = slaveSocket.read_some(buffer(response));
-                if (bytes_received > 0) {
-                    cout << "Slave server at IP " << slaveEndpoint.address().to_string() << " acknowledged receipt of range. " << endl;
+            futures.push_back(async([=]() {
+                try {
+                    ip::tcp::socket slaveSocket(ioContext);
+                    slaveSocket.connect(slaveEndpoint);
+                    string rangeToSend = to_string(slaveRanges[i].first) + " " + to_string(slaveRanges[i].second) + " " + to_string(numThreads); // Include numThreads in range message
+                    slaveSocket.write_some(buffer(rangeToSend));
+                    char response[1024];
+                    size_t bytes_received = slaveSocket.read_some(buffer(response));
+                    slaveSocket.close();
+                    string responseStr(response, bytes_received);
+                    istringstream iss(responseStr);
+                    int num;
+                    vector<int> primes;
+                    while (iss >> num) {
+                        primes.push_back(num);
+                    }
+                    return primes;
                 }
-                // Convert the response to integers and add them to primeList
-                istringstream iss(response);
-                int num;
-                while (iss >> num) {
-                    primeList.push_back(num);
+                catch (const exception& e) {
+                    cerr << "Error: " << e.what() << endl;
+                    return vector<int>();
                 }
-                // Close the connection after receiving acknowledgment
-                slaveSocket.close();
-            }
-            else {
-                // Slave server is not reachable
-                cerr << "Error: Unable to connect to slave server at IP " << slaveEndpoint.address().to_string() << endl;
-            }
+                }));
         }
-        // Compute number of primes in master server
-        // Calculate remaining range for master server
-        int remainingStart = slaveRanges.back().first; // Start from where the last partition ended
-        int remainingEnd = end;
-        cout << "[MasterServer range] " << remainingStart << "-" << remainingEnd << endl;
-        vector<int> remainingPrimesCount = findPrimesInRange(remainingStart, remainingEnd);
-        primeList.insert(primeList.end(), remainingPrimesCount.begin(), remainingPrimesCount.end());
 
+        // Create a thread pool to compute primes locally
+        vector<future<vector<int>>> localFutures;
+        rangeSize = slaveRanges.back().second - slaveRanges.back().first + 1;
+        int partitionSize = rangeSize / numThreads;
+        remaining = rangeSize % numThreads;
+        int threadStart = slaveRanges.back().first + 1;
+        for (int i = 0; i < numThreads; ++i) {
+            int threadEnd = threadStart + partitionSize - 1;
+            if (remaining > 0) {
+                threadEnd++;
+                remaining--;
+            }
+            if (threadEnd > slaveRanges.back().second) {
+                threadEnd = slaveRanges.back().second;
+            }
+            localFutures.push_back(async([=]() {
+                return findPrimesInRange(threadStart, threadEnd);
+                }));
+            threadStart = threadEnd + 1;
+        }
+
+        // Wait for all tasks to complete and collect results
+        vector<int> primeList;
+        for (auto& future : futures) {
+            vector<int> primes = future.get();
+            primeList.insert(primeList.end(), primes.begin(), primes.end());
+        }
+
+        // Wait for all local tasks to complete and collect results
+        for (auto& future : localFutures) {
+            vector<int> primes = future.get();
+            primeList.insert(primeList.end(), primes.begin(), primes.end());
+        }
+        for (int primes : primeList) {
+            cout << primes << endl;
+        }
         // Record the end time
-        auto end_time = std::chrono::steady_clock::now();
+        auto timeEnd = std::chrono::steady_clock::now();
+
         // Calculate the duration
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(timeEnd - timeStart);
         std::cout << "Execution time: " << duration.count() << " milliseconds" << std::endl;
 
         // Print total number of primes
-        int totalPrimes = 0;
-        for (int prime : primeList) {
-            //cout << prime << endl;
-            totalPrimes++;
-        }
-        cout << "Total number of primes: " << totalPrimes << endl;
+        cout << "Total number of primes: " << primeList.size() << endl;
 
     }
-    catch (const std::exception& e) {
+    catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;
     }
 }
 
 int main() {
     try {
-        io_context ioContext;
-
         // Specify the IPv4 address and port for the acceptor
         ip::tcp::endpoint endpoint(ip::make_address("192.168.68.107"), 27015);
 
@@ -158,10 +178,10 @@ int main() {
             acceptor.accept(socket);
 
             // Handle client request in a separate thread
-            std::thread(handleClient, move(socket), std::ref(slaveEndpoints)).detach();
+            std::thread(handleClient, move(socket), std::cref(slaveEndpoints)).detach();
         }
     }
-    catch (const std::exception& e) {
+    catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;
     }
 

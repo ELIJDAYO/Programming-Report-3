@@ -14,13 +14,13 @@ int main() {
         socket.connect(tcp::endpoint(ip::address::from_string("192.168.68.107"), 27015));
 
         // Send range to master server
-        string range = "1 100"; // Define the range here
-        range.push_back('\0'); // Add a null character at the end of the string
+        string range_threadCount = "1 100 4"; // Define the range here
+        range_threadCount.push_back('\0'); // Add a null character at the end of the string
         boost::system::error_code error;
-        boost::asio::write(socket, buffer(range));
+        boost::asio::write(socket, buffer(range_threadCount));
 
         // Receive response from masterServer
-        char response[1024];
+        //char response[1024];
         //size_t length = socket.read_some(buffer(response));
         //string numPrimes(response, length);
         //cout << "Number of primes received from masterServer: " << numPrimes << endl;

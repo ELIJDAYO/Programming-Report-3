@@ -1,9 +1,12 @@
 #include <iostream>
 #include <vector>
 #include <boost/asio.hpp>
+#include <thread>
+#include <future>
 
 using namespace std;
 using namespace boost::asio;
+boost::asio::io_context ioContext;
 namespace ip = boost::asio::ip;
 
 // Function to check if a number is prime
@@ -21,8 +24,7 @@ bool isPrime(int n) {
 std::vector<int> findPrimesInRange(int start, int end) {
     std::vector<int> primes;
     for (int i = start; i <= end; ++i) {
-        if (isPrime(i)) { 
-            //cout << i << endl;
+        if (isPrime(i)) {
             primes.push_back(i);
         };
 
@@ -32,8 +34,6 @@ std::vector<int> findPrimesInRange(int start, int end) {
 
 int main() {
     try {
-        io_context ioContext;
-
         // Specify the IPv4 address and port for the acceptor
         ip::tcp::endpoint endpoint(ip::make_address("192.168.68.108"), 27016); // Change port if needed
 
@@ -44,23 +44,24 @@ int main() {
         std::cout << "Slave server is listening on IP address: " << endpoint.address().to_string() << std::endl;
         std::cout << "Port: " << endpoint.port() << std::endl;
 
-        // Main loop to continuously accept connections and process data
         while (true) {
             // Accept connection
             ip::tcp::socket socket(ioContext);
             acceptor.accept(socket);
 
-            // Receive partitioned range from master server
+            // Receive partitioned range and thread count from master server
             char data[1024];
             size_t bytesRead = socket.read_some(buffer(data));
             if (bytesRead > 0) {
-                std::string range(data, bytesRead);
-                std::cout << "Received partitioned range from master server: " << range << std::endl;
+                std::string rangeAndThreadCount(data, bytesRead);
+                rangeAndThreadCount.erase(std::remove(rangeAndThreadCount.begin(), rangeAndThreadCount.end(), '\n'), rangeAndThreadCount.end()); // Remove newline character
+                rangeAndThreadCount.erase(std::remove(rangeAndThreadCount.begin(), rangeAndThreadCount.end(), '\r'), rangeAndThreadCount.end()); // Remove carriage return character
+                cout << "Received partitioned range and thread count from master server: " << rangeAndThreadCount << std::endl;
 
-                // Parse and process the partitioned range
-                std::istringstream iss(range);
-                int start, end;
-                iss >> start >> end;
+                // Parse and process the partitioned range and thread count
+                std::istringstream iss(rangeAndThreadCount);
+                int start, end, numThreads;
+                iss >> start >> end >> numThreads;
 
                 // Find primes in the range
                 std::vector<int> primes = findPrimesInRange(start, end);
