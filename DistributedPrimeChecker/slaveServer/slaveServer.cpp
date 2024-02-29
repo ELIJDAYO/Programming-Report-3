@@ -54,7 +54,7 @@ int main() {
                 }
 
                 // Calculate batch size
-                int batchSize = 150;
+                int batchSize = 20;
 
                 // Calculate range for each thread
                 int rangeSize = (end - start + 1) / numThreads;
