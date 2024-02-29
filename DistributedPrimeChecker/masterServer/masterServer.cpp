@@ -63,15 +63,18 @@ vector<int> handleClient(string rangeAndThreadCount, const vector<ip::tcp::endpo
             futures.push_back(async([=]() {
                 vector<int> slavePrimes; // Local variable to collect primes from slave server
                 try {
+
                     io_context ioSlaveContext;
                     ip::tcp::socket slaveSocket(ioSlaveContext);
                     slaveSocket.connect(slaveEndpoint);
                     string rangeToSend = to_string(start + masterRangeSize) + " " + to_string(end) + " " + to_string(numThreads); // Send remaining range to slave server
                     slaveSocket.write_some(buffer(rangeToSend));
 
-                    char response[4096];
+                    char response[1024];
                     while (true) {
-                        size_t bytes = slaveSocket.read_some(buffer(response, 4096));
+                        size_t bytes = slaveSocket.read_some(buffer(response, 1024));
+                        // Inside the loop where batches of primes are received
+                        slaveSocket.write_some(buffer("ACK", 3)); // Send acknowledgment to slave server
                         if (bytes == 0) break; // No more data available
                         string responseStr(response, bytes);
                         istringstream iss(responseStr);

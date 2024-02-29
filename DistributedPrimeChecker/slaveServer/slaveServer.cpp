@@ -38,7 +38,7 @@ int main() {
             ip::tcp::socket socket(ioContext);
             acceptor.accept(socket);
 
-            char data[4096];
+            char data[1024];
             size_t bytesRead = socket.read_some(buffer(data));
             if (bytesRead > 0) {
                 std::string rangeAndThreadCount(data, bytesRead);
@@ -52,6 +52,9 @@ int main() {
                     cerr << "Invalid input format!" << endl;
                     continue;
                 }
+
+                // Calculate batch size
+                int batchSize = 150;
 
                 // Calculate range for each thread
                 int rangeSize = (end - start + 1) / numThreads;
@@ -80,17 +83,19 @@ int main() {
                 for (const auto& primes : primesLists) {
                     combinedPrimes.insert(combinedPrimes.end(), primes.begin(), primes.end());
                 }
-                cout << "Size: " << combinedPrimes.size() << endl;
-                // Send primes in batches of 20
-                for (size_t i = 0; i < combinedPrimes.size(); i += 20) {
-                    size_t endIndex = min(i + 20, combinedPrimes.size());
+
+                // Send primes in batches
+                for (size_t i = 0; i < combinedPrimes.size(); i += batchSize) {
+                    size_t endIndex = min(i + batchSize, combinedPrimes.size());
                     std::ostringstream oss;
                     for (size_t j = i; j < endIndex; ++j) {
                         oss << combinedPrimes[j] << " ";
                     }
                     std::string primesStr = oss.str();
                     primesStr.push_back('\0');
-                    socket.write_some(buffer(primesStr));
+                    socket.write_some(buffer(primesStr)); // Send the batch
+                    char ack[3];
+                    socket.read_some(buffer(ack)); // Wait for acknowledgment from master server
                 }
             }
             socket.close();
