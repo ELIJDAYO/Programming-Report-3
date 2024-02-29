@@ -18,14 +18,12 @@ bool isPrime(int n) {
     return true;
 }
 
-std::vector<int> findPrimesInRange(int start, int end) {
-    std::vector<int> primes;
+void findPrimesInRange(int start, int end, vector<int>& primes) {
     for (int i = start; i <= end; ++i) {
         if (isPrime(i)) {
             primes.push_back(i);
         };
     }
-    return primes;
 }
 
 int main() {
@@ -55,18 +53,45 @@ int main() {
                     continue;
                 }
 
-                std::vector<int> primes = findPrimesInRange(start, end);
+                // Calculate batch size
+                int batchSize = 1;
 
-                std::ostringstream oss;
-                for (int prime : primes) {
-                    oss << prime << " ";
+                // Calculate range for each thread
+                int rangeSize = (end - start + 1) / numThreads;
+                int remaining = (end - start + 1) % numThreads;
+
+                // Create vector to store primes
+                vector<vector<int>> primesLists(numThreads);
+
+                // Start threads to find primes
+                vector<thread> threads;
+                for (int i = 0; i < numThreads; ++i) {
+                    int threadStart = start + i * rangeSize;
+                    int threadEnd = threadStart + rangeSize - 1 + (i == numThreads - 1 ? remaining : 0);
+                    threads.emplace_back([=, &primesLists]() {
+                        findPrimesInRange(threadStart, threadEnd, primesLists[i]);
+                        });
                 }
-                std::string primesStr = oss.str();
-                primesStr.push_back('\0');
-                socket.write_some(buffer(primesStr));
-                int length = primes.size();
-                cout << "The size of primes: " << length << endl;
-                cout << "Sent list of primes to master server." << std::endl;
+
+                // Wait for all threads to finish
+                for (auto& thread : threads) {
+                    thread.join();
+                }
+
+                // Combine primes from all threads
+                vector<int> combinedPrimes;
+                for (const auto& primes : primesLists) {
+                    combinedPrimes.insert(combinedPrimes.end(), primes.begin(), primes.end());
+                }
+                cout << "Size: " << combinedPrimes.size() << endl;
+                // Send primes one at a time
+                for (int prime : combinedPrimes) {
+                    std::ostringstream oss;
+                    oss << prime << " ";
+                    std::string primeStr = oss.str();
+                    primeStr.push_back('\0');
+                    socket.write_some(buffer(primeStr));
+                }
             }
             socket.close();
         }

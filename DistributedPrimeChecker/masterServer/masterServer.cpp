@@ -3,6 +3,8 @@
 #include <boost/asio.hpp>
 #include <thread>
 #include <future>
+#include <chrono>
+#include <algorithm> // for std::remove
 
 using namespace std;
 using namespace boost::asio;
@@ -26,13 +28,13 @@ vector<int> findPrimesInRange(int start, int end) {
     return primes;
 }
 
-vector<int> handleClient(string rangeAndThreadCount, const std::vector<ip::tcp::endpoint>& slaveEndpoints) {
+vector<int> handleClient(string rangeAndThreadCount, const vector<ip::tcp::endpoint>& slaveEndpoints) {
     vector<int> primeList;
     try {
         // Record the start time
         auto timeStart = std::chrono::steady_clock::now();
 
-        cout << "Received range and thread count from client: " << rangeAndThreadCount << endl;
+        std::cout << "Received range and thread count from client: " << rangeAndThreadCount << endl;
 
         // Parse range and thread count
         istringstream iss(rangeAndThreadCount);
@@ -40,61 +42,41 @@ vector<int> handleClient(string rangeAndThreadCount, const std::vector<ip::tcp::
         iss >> start >> end >> numThreads;
 
         // Print original range
-        cout << "[Original Range]: " << start << "-" << end << endl;
-        cout << "Number of threads: " << numThreads << endl;
+        std::cout << "[Original Range]: " << start << "-" << end << endl;
+        std::cout << "Number of threads: " << numThreads << endl;
 
-        // Print number of ranges
-        int numRanges = slaveEndpoints.size() + 1; // Including master range
-        cout << "Number of ranges: " << numRanges << endl;
+        // Calculate range for master server
+        int masterRangeSize = (end - start + 1) / 2;
+        vector<int> masterPrimes;
+        auto masterTask = std::async(std::launch::async, [&]() {
+            return findPrimesInRange(start, start + masterRangeSize - 1);
+            });
 
-        // Calculate ranges for slaves
-        vector<pair<int, int>> slaveRanges;
-        int rangeSize = (end - start + 1) / numRanges;
-        int remaining = (end - start + 1) % numRanges;
-        int currentStart = start;
-        for (int i = 0; i < numRanges; ++i) {
-            int currentEnd = currentStart + rangeSize - 1;
-            if (remaining > 0) {
-                currentEnd++;
-                remaining--;
-            }
-            slaveRanges.push_back({ currentStart, currentEnd });
-            currentStart = currentEnd + 1;
-        }
-
-        // Print partitioned ranges
-        for (size_t i = 0; i < slaveEndpoints.size(); ++i) {
-            cout << "[Slave Range " << i + 1 << "]: " << slaveRanges[i].first << "-" << slaveRanges[i].second << endl;
-        }
+        // Print master range
+        std::cout << "[Master Range]: " << start << "-" << start + masterRangeSize - 1 << endl;
 
         // Connect to slave servers and send ranges
-        vector<future<void>> futures;
+        vector<future<vector<int>>> futures;
         for (size_t i = 0; i < slaveEndpoints.size(); ++i) {
             ip::tcp::endpoint slaveEndpoint = slaveEndpoints[i];
-            futures.push_back(async([&, i]() { // Capture primeList by reference
+            futures.push_back(async([=]() {
+                vector<int> slavePrimes; // Local variable to collect primes from slave server
                 try {
-                    ip::tcp::socket slaveSocket(ioContext);
+                    io_context ioSlaveContext;
+                    ip::tcp::socket slaveSocket(ioSlaveContext);
                     slaveSocket.connect(slaveEndpoint);
-                    string rangeToSend = to_string(slaveRanges[i].first) + " " + to_string(slaveRanges[i].second) + " " + to_string(numThreads); // Include numThreads in range message
+                    string rangeToSend = to_string(start + masterRangeSize) + " " + to_string(end) + " " + to_string(numThreads); // Send remaining range to slave server
                     slaveSocket.write_some(buffer(rangeToSend));
 
-                    // Receive acknowledgment from slaveServer
-                    char ack[1024];
-                    size_t ackBytes = slaveSocket.read_some(buffer(ack));
-                    string ackStr(ack, ackBytes);
-                    cout << "Received acknowledgment from slaveServer: " << ackStr << endl;
-
                     char response[1024];
-                    size_t bytes_received = 0;
                     while (true) {
                         size_t bytes = slaveSocket.read_some(buffer(response, 1024));
                         if (bytes == 0) break; // No more data available
-                        bytes_received += bytes;
                         string responseStr(response, bytes);
                         istringstream iss(responseStr);
                         int num;
                         while (iss >> num) {
-                            primeList.push_back(num); // Insert into primeList directly
+                            slavePrimes.push_back(num);
                         }
                     }
                     slaveSocket.close();
@@ -102,23 +84,32 @@ vector<int> handleClient(string rangeAndThreadCount, const std::vector<ip::tcp::
                 catch (const exception& e) {
                     cerr << "Error: " << e.what() << endl;
                 }
+                return slavePrimes; // Return primes from slave server
                 }));
         }
 
+        // Wait for master task to complete
+        masterPrimes = masterTask.get();
+
         // Wait for all tasks to complete
         for (auto& future : futures) {
-            future.get();
+            vector<int> primes = future.get();
+            primeList.insert(primeList.end(), primes.begin(), primes.end()); // Merge primes into primeList
         }
+        std::cout << "Size 1: " << primeList.size() << " Size 2: " << masterPrimes.size() << endl;
+        // Merge primes from master server and slave servers
+        primeList.insert(primeList.end(), masterPrimes.begin(), masterPrimes.end());
 
         // Record the end time
         auto timeEnd = std::chrono::steady_clock::now();
 
         // Calculate the duration
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(timeEnd - timeStart);
-        std::cout << "Execution time: " << duration.count() << " milliseconds" << std::endl;
+        std::cout << "Execution time: " << duration.count() << " milliseconds" << endl;
 
         // Print total number of primes
-        cout << "Total number of primes: " << primeList.size() << endl;
+        std::cout << "Total number of primes: " << primeList.size() << endl;
+
     }
     catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;
@@ -144,8 +135,8 @@ vector<int> handleClient(string rangeAndThreadCount) {
         }
 
         // Print original range
-        cout << "[Original Range]: " << start << "-" << end << endl;
-        cout << "Number of threads: " << numThreads << endl;
+        std::cout << "[Original Range]: " << start << "-" << end << endl;
+        std::cout << "Number of threads: " << numThreads << endl;
 
         // Create a thread pool to compute primes locally
         vector<future<vector<int>>> localFutures;
@@ -179,7 +170,7 @@ vector<int> handleClient(string rangeAndThreadCount) {
         std::cout << "Execution time: " << duration.count() << " milliseconds" << std::endl;
 
         // Print total number of primes
-        cout << "Total number of primes: " << primeList.size() << endl;
+        std::cout << "Total number of primes: " << primeList.size() << endl;
     }
     catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;
@@ -221,13 +212,18 @@ int main() {
             
             // Handle client request involving both master and slave servers in a separate thread
             std::vector<int> resultWithSlave = handleClient(rangeAndThreadCount, slaveEndpoints);
+            std::sort(resultWithSlave.begin(), resultWithSlave.end());
 
             std::vector<int> resultWithoutSlave = handleClient(rangeAndThreadCount);
+            std::sort(resultWithoutSlave.begin(), resultWithoutSlave.end());
+
             if (resultWithSlave == resultWithoutSlave) {
-                cout << "Both lists are exactly the same" << endl;
+                std::cout << "Both lists are exactly the same" << endl;
             }
             else {
-                cout << "Does not match. Check possible error" << endl;
+                std::cout << "Does not match. Check for possible error." << endl;
+
+
             }
         }
     }

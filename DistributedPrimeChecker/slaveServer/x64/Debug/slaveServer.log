@@ -3,5 +3,4 @@
   - add -D_WIN32_WINNT=0x0601 to the compiler command line; or
   - add _WIN32_WINNT=0x0601 to your project's Preprocessor Definitions.
   Assuming _WIN32_WINNT=0x0601 (i.e. Windows 7 target).
-C:\Users\edayo\Downloads\4y2t\STDISCM\Programming Report #3\DistributedPrimeChecker\slaveServer\slaveServer.cpp(67,28): warning C4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
   slaveServer.vcxproj -> C:\Users\edayo\Downloads\4y2t\STDISCM\Programming Report #3\DistributedPrimeChecker\x64\Debug\slaveServer.exe
