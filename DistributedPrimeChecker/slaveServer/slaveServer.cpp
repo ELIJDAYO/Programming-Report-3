@@ -38,7 +38,7 @@ int main() {
             ip::tcp::socket socket(ioContext);
             acceptor.accept(socket);
 
-            char data[1024];
+            char data[4096];
             size_t bytesRead = socket.read_some(buffer(data));
             if (bytesRead > 0) {
                 std::string rangeAndThreadCount(data, bytesRead);
@@ -52,9 +52,6 @@ int main() {
                     cerr << "Invalid input format!" << endl;
                     continue;
                 }
-
-                // Calculate batch size
-                int batchSize = 1;
 
                 // Calculate range for each thread
                 int rangeSize = (end - start + 1) / numThreads;
@@ -84,13 +81,16 @@ int main() {
                     combinedPrimes.insert(combinedPrimes.end(), primes.begin(), primes.end());
                 }
                 cout << "Size: " << combinedPrimes.size() << endl;
-                // Send primes one at a time
-                for (int prime : combinedPrimes) {
+                // Send primes in batches of 20
+                for (size_t i = 0; i < combinedPrimes.size(); i += 20) {
+                    size_t endIndex = min(i + 20, combinedPrimes.size());
                     std::ostringstream oss;
-                    oss << prime << " ";
-                    std::string primeStr = oss.str();
-                    primeStr.push_back('\0');
-                    socket.write_some(buffer(primeStr));
+                    for (size_t j = i; j < endIndex; ++j) {
+                        oss << combinedPrimes[j] << " ";
+                    }
+                    std::string primesStr = oss.str();
+                    primesStr.push_back('\0');
+                    socket.write_some(buffer(primesStr));
                 }
             }
             socket.close();

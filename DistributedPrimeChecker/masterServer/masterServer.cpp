@@ -5,6 +5,7 @@
 #include <future>
 #include <chrono>
 #include <algorithm> // for std::remove
+#include <unordered_set> // for set operations
 
 using namespace std;
 using namespace boost::asio;
@@ -68,9 +69,9 @@ vector<int> handleClient(string rangeAndThreadCount, const vector<ip::tcp::endpo
                     string rangeToSend = to_string(start + masterRangeSize) + " " + to_string(end) + " " + to_string(numThreads); // Send remaining range to slave server
                     slaveSocket.write_some(buffer(rangeToSend));
 
-                    char response[1024];
+                    char response[4096];
                     while (true) {
-                        size_t bytes = slaveSocket.read_some(buffer(response, 1024));
+                        size_t bytes = slaveSocket.read_some(buffer(response, 4096));
                         if (bytes == 0) break; // No more data available
                         string responseStr(response, bytes);
                         istringstream iss(responseStr);
@@ -96,16 +97,18 @@ vector<int> handleClient(string rangeAndThreadCount, const vector<ip::tcp::endpo
             vector<int> primes = future.get();
             primeList.insert(primeList.end(), primes.begin(), primes.end()); // Merge primes into primeList
         }
-        std::cout << "Size 1: " << primeList.size() << " Size 2: " << masterPrimes.size() << endl;
-        // Merge primes from master server and slave servers
-        primeList.insert(primeList.end(), masterPrimes.begin(), masterPrimes.end());
-
         // Record the end time
         auto timeEnd = std::chrono::steady_clock::now();
 
         // Calculate the duration
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(timeEnd - timeStart);
         std::cout << "Execution time: " << duration.count() << " milliseconds" << endl;
+
+        std::cout << "Size 1: " << primeList.size() << " Size 2: " << masterPrimes.size() << endl;
+        // Merge primes from master server and slave servers
+        primeList.insert(primeList.end(), masterPrimes.begin(), masterPrimes.end());
+
+
 
         // Print total number of primes
         std::cout << "Total number of primes: " << primeList.size() << endl;
@@ -179,6 +182,24 @@ vector<int> handleClient(string rangeAndThreadCount) {
 }
 
 
+double calculateSimilarity(const std::vector<int>& vec1, const std::vector<int>& vec2) {
+    // Convert vectors to sets
+    std::unordered_set<int> set1(vec1.begin(), vec1.end());
+    std::unordered_set<int> set2(vec2.begin(), vec2.end());
+
+    // Calculate intersection
+    std::unordered_set<int> intersection;
+    for (int num : set1) {
+        if (set2.find(num) != set2.end()) {
+            intersection.insert(num);
+        }
+    }
+
+    // Calculate similarity
+    double similarity = static_cast<double>(intersection.size()) / (set1.size() + set2.size() - intersection.size());
+    return similarity;
+}
+
 int main() {
     try {
         // Specify the IPv4 address and port for the acceptor
@@ -222,6 +243,9 @@ int main() {
             }
             else {
                 std::cout << "Does not match. Check for possible error." << endl;
+
+                double similarity = calculateSimilarity(resultWithSlave, resultWithoutSlave);
+                std::cout << "Similarity: " << similarity << std::endl;
 
 
             }

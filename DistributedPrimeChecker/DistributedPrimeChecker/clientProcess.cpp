@@ -14,7 +14,7 @@ int main() {
         socket.connect(tcp::endpoint(ip::address::from_string("192.168.68.107"), 27015));
 
         // Send range to master server
-        string range_threadCount = "1 10000 128"; // Define the range here
+        string range_threadCount = "1 100000 128"; // Define the range here
         range_threadCount.push_back('\0'); // Add a null character at the end of the string
         boost::system::error_code error;
         boost::asio::write(socket, buffer(range_threadCount));
